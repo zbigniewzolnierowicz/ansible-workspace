@@ -41,38 +41,44 @@
           git:
             repo: "{{ dotfiles_repo }}"
             dest: "{{ created_user.home }}/dots"
-        - name: Install zplug
-          block:
-            - name: Download zplug
-              become_method: su
-              become_user: "{{ created_user.name }}"
-              get_url:
-                url: "https://raw.githubusercontent.com/zplug/installer/master/installer.zsh"
-                dest: "{{ created_user.home }}/zplug_installer.zsh"
-            - name: Install zplug
-              become_method: su
-              become_user: "{{ created_user.name }}"
-              git:
-                repo: https://github.com/zplug/zplug
-                dest: "{{ created_user.home }}/.zplug"
-            - name: Remove zplug installer
-              file:
-                path: "{{ created_user.home }}/zplug_installer.zsh"
-                state: absent
-            - name: Link dotfiles
-              shell: "cd {{ created_user.home }}/dots; stow zsh"
-          rescue:
-            - name: Remove zplug installer
-              file:
-                path: "{{ created_user.home }}/zplug_installer.zsh"
-                state: absent
-            - name: Unstow zsh
-              shell: "cd {{ created_user.home }}/dots; stow -D zsh"
       rescue:
         - name: Remove dotfiles
           file:
             path: "{{ created_user.home }}/dots"
             state: absent
+        - name: Get dotfiles
+          become_method: su
+          become_user: "{{ created_user.name }}"
+          git:
+            repo: "{{ dotfiles_repo }}"
+            dest: "{{ created_user.home }}/dots"
+    - name: Install zplug
+      block:
+        - name: Download zplug
+          become_method: su
+          become_user: "{{ created_user.name }}"
+          get_url:
+            url: "https://raw.githubusercontent.com/zplug/installer/master/installer.zsh"
+            dest: "{{ created_user.home }}/zplug_installer.zsh"
+        - name: Install zplug
+          become_method: su
+          become_user: "{{ created_user.name }}"
+          git:
+            repo: https://github.com/zplug/zplug
+            dest: "{{ created_user.home }}/.zplug"
+        - name: Remove zplug installer
+          file:
+            path: "{{ created_user.home }}/zplug_installer.zsh"
+            state: absent
+        - name: Link dotfiles
+          shell: "cd {{ created_user.home }}/dots; stow zsh"
+      rescue:
+        - name: Remove zplug installer
+          file:
+            path: "{{ created_user.home }}/zplug_installer.zsh"
+            state: absent
+        - name: Unstow zsh
+          shell: "cd {{ created_user.home }}/dots; stow -D zsh"    
     - name: Install yay
       block:
         - name: Download yay
@@ -175,10 +181,15 @@
             - rofi
             - pulseaudio
             - pulsemixer
+            - nodejs
+            - yarn
+            - ttf-jetbrains-mono
+            - otf-font-awesome
         - name: Install apps from AUR
           shell: "yay -Su {{ item }} --noconfirm --needed"
           loop:
             - polybar
+            - cherry-font-git
         - name: Link dotfiles
           shell: "cd {{ created_user.home }}/dots; stow bspwm"
       rescue:
