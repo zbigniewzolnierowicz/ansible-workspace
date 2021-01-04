@@ -1,0 +1,186 @@
+---
+- name: update web servers
+  hosts: remote
+  remote_user: zed
+  vars:
+    gpg_key: E97F24B9C40898D3B46F0DC7ECDA18512085DA3C
+    dotfiles_repo: https://github.com/zbigniewzolnierowicz/dots/
+  vars_prompt:
+  - name: user_username
+    prompt: Enter username
+    private: no
+  - name: user_password
+    prompt: Enter password
+    private: yes
+    confirm: yes
+
+  tasks:
+    - name: Create user
+      block:
+        - name: Install packages
+          become: yes
+          package:
+            name: "{{ item }}"
+            state: latest
+          loop:
+            - zsh
+            - git
+            - stow
+            - exa
+        - name: Create user account
+          become: yes
+          register: created_user
+          user:
+            name: "{{ user_username }}"
+            password: "{{ user_password | password_hash('sha512') }}"
+            shell: /usr/bin/zsh
+            create_home: yes
+        - name: Get dotfiles
+          become_method: su
+          become_user: "{{ created_user.name }}"
+          git:
+            repo: "{{ dotfiles_repo }}"
+            dest: "{{ created_user.home }}/dots"
+        - name: Install zplug
+          block:
+            - name: Download zplug
+              become_method: su
+              become_user: "{{ created_user.name }}"
+              get_url:
+                url: "https://raw.githubusercontent.com/zplug/installer/master/installer.zsh"
+                dest: "{{ created_user.home }}/zplug_installer.zsh"
+            - name: Install zplug
+              become_method: su
+              become_user: "{{ created_user.name }}"
+              git:
+                repo: https://github.com/zplug/zplug
+                dest: "{{ created_user.home }}/.zplug"
+            - name: Remove zplug installer
+              file:
+                path: "{{ created_user.home }}/zplug_installer.zsh"
+                state: absent
+            - name: Link dotfiles
+              shell: "cd {{ created_user.home }}/dots; stow zsh"
+          rescue:
+            - name: Remove zplug installer
+              file:
+                path: "{{ created_user.home }}/zplug_installer.zsh"
+                state: absent
+            - name: Unstow zsh
+              shell: "cd {{ created_user.home }}/dots; stow -D zsh"
+      rescue:
+        - name: Remove dotfiles
+          file:
+            path: "{{ created_user.home }}/dots"
+            state: absent
+    - name: Install yay
+      block:
+        - name: Download yay
+          become_method: su
+          become_user: "{{ created_user.name }}"
+          git:
+            repo: https://aur.archlinux.org/yay.git
+            dest: "{{ created_user.home }}/yay"
+        - name: Install yay
+          become_method: su
+          become_user: "{{ created_user.name }}"
+          shell: "cd {{ created_user.home }}/yay; makepkg -si --noconfirm --needed"
+      rescue:
+        - name: Remove yay install dir
+          become: yes
+          file:
+            path: "{{ created_user.home }}/yay"
+            state: absent
+    - name: Configure GnuPG
+      block:
+        - name: Install packages
+          become: yes
+          package:
+            name: "{{ item }}"
+            state: latest
+          loop:
+            - gnupg
+            - opensc
+            - ccid
+            - pcsc-tools
+        - name: Start SmartCard daemon
+          become: yes
+          service:
+            name: pcscd
+            enabled: yes
+            state: started
+        - name: Add GPG key
+          become_method: su
+          become_user: "{{ created_user.name }}"
+          shell: "gpg --recv-keys {{ gpg_key }}"
+        - name: Update GPG config
+          become_method: su
+          become_user: "{{ created_user.name }}"
+          get_url:
+            url: "https://raw.githubusercontent.com/drduh/config/master/gpg.conf"
+            dest: "{{ created_user.home }}/.gnupg/gpg.conf"
+    - name: Install Neovim
+      block:
+        - name: Install package
+          become: yes
+          package:
+            name: neovim
+            state: latest
+        - name: Install vim-plug
+          shell: |
+            sh -c 'curl -fLo "${XDG_DATA_HOME:-$HOME/.local/share}"/nvim/site/autoload/plug.vim --create-dirs \
+            https://raw.githubusercontent.com/junegunn/vim-plug/master/plug.vim'
+        - name: Link dotfiles
+          shell: "cd {{ created_user.home }}/dots; stow neovim"
+      rescue:
+        - name: Unlink dotfiles
+          shell: "cd {{ created_user.home }}/dots; stow -D neovim"
+    - name: Install Alacritty
+      block:
+        - name: Install package
+          become: yes
+          package:
+            name: alacritty
+            state: latest
+        - name: Link dotfiles
+          shell: "cd {{ created_user.home }}/dots; stow alacritty"
+      rescue:
+        - name: Unlink dotfiles
+          shell: "cd {{ created_user.home }}/dots; stow -D alacritty"
+    - name: Install bspwm and sxhkd
+      block:
+        - name: Install packages
+          become: yes
+          package:
+            name: "{{ item }}"
+            state: latest
+          loop:
+            - bspwm
+            - sxhkd
+            - picom
+            - wmname
+            - xorg-xbacklight
+            - xorg-xsetroot
+            - xorg-xinit
+            - xorg-server
+            - xorg-xrandr
+            - xorg-xrdb
+            - arandr
+            - feh
+            - udisks2
+            - udiskie
+            - dunst
+            - maim
+            - slop
+            - rofi
+            - pulseaudio
+            - pulsemixer
+        - name: Install apps from AUR
+          shell: "yay -Su {{ item }} --noconfirm --needed"
+          loop:
+            - polybar
+        - name: Link dotfiles
+          shell: "cd {{ created_user.home }}/dots; stow bspwm"
+      rescue:
+        - name: Unlink dotfiles
+          shell: "cd {{ created_user.home }}/dots; stow -D bspwm"
